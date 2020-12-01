@@ -1,0 +1,262 @@
+---
+title: "Code for logistic regression models and diagnostics"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,tidy.opts=list(width.cutoff=60),tidy=TRUE)
+knitr::opts_chunk$set(fig.pos = 'H') #hold position of figures
+
+library(magrittr)
+library(tidyverse)
+library(Rcpp)
+library(brms)
+library(rstanarm)
+```
+
+# Load data
+
+
+```{r load-data}
+#Insert path to file
+data.path <- ".../Data/data.csv"
+data <- read_csv(data.path)
+```
+
+## Create factors
+
+```{r create-factors}
+#Create factors
+data$BOOK <- factor(data$BOOK)
+data$CHAPTER <- factor(data$CHAPTER)
+data$SECTION <- factor(data$SECTION)
+
+data$AGENT.EXPONENCE <- factor(data$AGENT.EXPONENCE, levels = c("PP", "DAT")) 
+data$AGENT.PP <- factor(data$AGENT.PP)
+data$ASPECT <- factor(data$ASPECT, levels = c("IMPERFECTIVE","PERFECT", "PERFECTIVE"))
+data$AGENT.NOMINALITY <- factor(data$AGENT.NOMINALITY, levels = c("NOUN", "PRONOUN"))
+data$SUBJECT.ANIMACY <- factor(data$SUBJECT.ANIMACY, levels=c("ANIMATE", "INANIMATE")) 
+data$PARTICIPLE <- factor(data$PARTICIPLE, levels=c("NON.PARTICIPLE", "PARTICIPLE"))
+data$PERFECTIVE <- factor(data$PERFECTIVE, levels=c("NON.PERFECTIVE", "PERFECTIVE"))
+data$AGENT.STATUS <- factor(data$AGENT.STATUS, levels = c("NON.PRONOMINAL", "STRESSED.PRO", "ENCLITIC.PRO"))
+data$LEMMA <- factor(data$LEMMA)
+```
+
+## Create training and test data
+
+```{r training-test}
+#Set seed for replication
+set.seed(238)
+#Create training and test datasets
+sample <- sample.int(n = nrow(data), size = floor(.7*nrow(data)), replace = F)
+data.train <- data[sample, ]
+data.test  <- data[-sample, ]
+```
+
+# Traditional model
+
+
+```{r fit1-model}
+fit1 <- brm(formula = AGENT.EXPONENCE ~ PERFECT + (1|LEMMA),
+            data = data, family = bernoulli(),
+            prior = get_prior(AGENT.EXPONENCE ~ PERFECT + (1|LEMMA), data = data, family = binomial()),
+            warmup = 4000, iter = 20000, chains = 6,
+            control = list(adapt_delta = 0.95), save_all_pars = TRUE)
+```
+
+
+## Model convergence
+
+```{r fit1-convergence}
+#plot(fit1)
+fit1 %>% plot(combo = c("hist", "trace"), widths = c(1, 1.5), theme = theme_bw(base_size = 12),  binwidth = 1)
+```
+
+
+## Model diagnostics
+
+### Bayesian R-squared
+
+```{r fit1-bayes-r2}
+r2.fit1 <- bayes_R2(fit1)
+```
+
+
+
+### Correct classification rate
+
+```{r fit1-correct-classification-rate}
+fit1.train <- brm(formula = AGENT.EXPONENCE ~ ASPECT + (1|LEMMA),
+            data = data.train, family = bernoulli(),
+            prior = get_prior(AGENT.EXPONENCE ~ ASPECT + (1|LEMMA), data = data.train, family = bernoulli()),
+            warmup = 4000, iter = 20000, chains = 6, cores = 6,
+            control = list(adapt_delta = 0.95), save_all_pars = TRUE, seed = 100)
+
+fit1.predict <- predict(fit1.train, newdata=data.test, allow_new_levels=TRUE) 
+fit1.predict <- if_else(fit1.predict[,1] > 0.5, 1, 0)
+fit1.confusion.matrix <- table(fit1.predict, pull(data.test, AGENT.EXPONENCE))
+fit1.ccr <- sum(diag(fit1.confusion.matrix))/sum(fit1.confusion.matrix)
+fit1.predict.df <- as.data.frame(fit1.predict)
+```
+
+
+
+# George 2005
+
+```{r fit2-model}
+fit2 <- brm(formula = AGENT.EXPONENCE ~ PERFECT + AGENT.NOMINALITY +  SUBJECT.ANIMACY + PARTICIPLE + (1|LEMMA), data = data, family = bernoulli(), prior = get_prior(AGENT.EXPONENCE ~ PERFECT + AGENT.NOMINALITY +  SUBJECT.ANIMACY + PARTICIPLE + (1|LEMMA), data = data, family = binomial()), warmup = 4000, iter = 20000, chains = 6, control = list(adapt_delta = 0.95), save_all_pars = TRUE)
+```
+
+## Convergence
+
+```{r fit2-convergence}
+#plot(fit2)
+fit2 %>% plot(combo = c("hist", "trace"), widths = c(1, 1.5), theme = theme_bw(base_size = 12),  binwidth = 1)
+```
+
+
+## Model diagnostics
+
+### Correct classification rate
+
+```{r fit2-correct-classification-rate}
+fit2.train <- brm(formula = AGENT.EXPONENCE ~ ASPECT + AGENT.NOMINALITY +  SUBJECT.ANIMACY + PARTICIPLE + (1|LEMMA), data = data.train, family = bernoulli(), 
+            prior = get_prior(AGENT.EXPONENCE ~ ASPECT + AGENT.NOMINALITY +  SUBJECT.ANIMACY + PARTICIPLE + (1|LEMMA), data = data.train, family = bernoulli()), warmup = 4000, iter = 20000, chains = 6, cores = 6, control = list(adapt_delta = 0.95), save_all_pars = TRUE, seed = 100)
+
+fit2.predict <- predict(fit2.train, newdata=data.test, allow_new_levels=TRUE)
+fit2.predict <- if_else(fit2.predict[,1] > 0.5, 1, 0)
+fit2.confusion.matrix <- table(fit2.predict, pull(data.test, AGENT.EXPONENCE))
+fit2.ccr <- sum(diag(fit2.confusion.matrix))/sum(fit2.confusion.matrix)
+```
+
+
+### Bayesian R-squared
+
+```{r fit2-bayes-r2}
+r2.fit2 <- bayes_R2(fit2)
+```
+
+### Bayes factor
+
+```{r fit2-bayes-factor}
+fit2.fit1.bf <- bayes_factor(fit2, fit1, log = TRUE)
+```
+
+
+
+
+
+
+# Proposed model
+
+```{r fit3-model}
+fit3 <- brm(formula = AGENT.EXPONENCE ~ PERFECT  + AGENT.STATUS + SUBJECT.ANIMACY + (1|LEMMA),
+            data = data, family = bernoulli(),
+            prior = get_prior(AGENT.EXPONENCE ~ PERFECT  + AGENT.STATUS + SUBJECT.ANIMACY  + (1|LEMMA), data = data, family = binomial()),
+            warmup = 4000, iter = 20000, chains = 6,
+            control = list(adapt_delta = 0.95), save_all_pars = TRUE)
+```
+
+### Random-intercepts and random-slopes
+
+```{r full-random-effects, eval=FALSE}
+fit3.full.random <- brm(formula = AGENT.EXPONENCE ~ ASPECT + AGENT.STATUS + SUBJECT.ANIMACY  + (1 + ASPECT + AGENT.STATUS + SUBJECT.ANIMACY|LEMMA),
+            data = hdt.passive, family = bernoulli(),
+            prior = get_prior(AGENT.EXPONENCE ~ ASPECT +  AGENT.STATUS + SUBJECT.ANIMACY  + (1|LEMMA), data = hdt.passive, family = bernoulli()),
+            warmup = 4000, iter = 20000, chains = 6, cores = 6,
+            control = list(adapt_delta = 0.95, max_treedepth = 15), save_all_pars = TRUE)
+
+stanplot(fit3.full.random, 
+         type = "areas",
+         prob = 0.95)
+
+fit3.ran.effect <- ranef(fit3.full.random)
+
+r_Intercept <- fit3.ran.effect$LEMMA[, , 1] %>%
+  as_tibble() %>%
+  rownames_to_column(var = "LEMMA") %>%
+  mutate(Variable = "sd(Intercept)")
+
+r_Intercept$LEMMA <- rownames(fit3.ran.effect$LEMMA)
+
+r_ASPECT <- fit3.ran.effect$LEMMA[, , 2] %>%
+  as_tibble() %>%
+  rownames_to_column(var = "LEMMA") %>%
+  mutate(Variable = "sd(ASPECT)")
+
+r_AGENT.STATUS <- fit3.ran.effect$LEMMA[, , 3] %>%
+  as_tibble() %>%
+  rownames_to_column(var = "LEMMA") %>%
+  mutate(Variable = "sd(AGENT.STATUS)")
+
+r_SUBJECT.ANIMACY <- fit3.ran.effect$LEMMA[, , 4] %>%
+  as_tibble() %>%
+  rownames_to_column(var = "LEMMA") %>%
+  mutate(Variable = "sd(SUBJECT.ANIMACY)")
+
+
+
+r_Intercept %>%
+  bind_rows(r_ASPECT) %>%
+  bind_rows(r_AGENT.STATUS) %>%
+  bind_rows(r_SUBJECT.ANIMACY) %>%
+  mutate(Contain_Zero = if_else(Q2.5*Q97.5 > 0, "no", "yes")) %>%
+  ggplot(aes(x = LEMMA, y = Estimate, col = Contain_Zero)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=Q2.5, ymax=Q97.5)) +
+  facet_grid(. ~ Variable, scale = "free") +
+  coord_flip() +
+  theme(legend.position = "top") +
+  theme(text=element_text(size=7, family = "Brill")) 
+```
+
+
+
+
+## Model convergence
+
+```{r fit3-convergence}
+#plot(fit4)
+fit3 %>% plot(combo = c("hist", "trace"), widths = c(1, 1.5), theme = theme_bw(base_size = 12),  binwidth = 1)
+```
+
+
+
+## Model diagnostics
+
+### Correct classification rate
+
+```{r fit3-correct-classification-rate}
+
+fit3.train <- brm(formula = AGENT.EXPONENCE ~ ASPECT +  AGENT.STATUS + SUBJECT.ANIMACY  + (1|LEMMA),
+            data = data.train, family = bernoulli(),
+            prior = get_prior(AGENT.EXPONENCE ~ ASPECT +  AGENT.STATUS + SUBJECT.ANIMACY  + (1|LEMMA), data = data.train, family = bernoulli()),
+            warmup = 4000, iter = 20000, chains = 6, cores = 6,
+            control = list(adapt_delta = 0.95), save_all_pars = TRUE, seed = 100)
+
+fit3.predict <- predict(fit3.train, newdata=data.test, allow_new_levels=TRUE)
+fit3.predict <- if_else(fit3.predict[,1] > 0.5, 1, 0)
+fit3.confusion.matrix <- table(fit3.predict, pull(data.test, AGENT.EXPONENCE)) #`pull` 
+fit3.ccr <- sum(diag(fit3.confusion.matrix))/sum(fit3.confusion.matrix)
+```
+
+
+### Bayes Factor
+
+```{r fit3-bayes-factor}
+fit3.fit2.bf <- bayes_factor(fit3, fit2, log = TRUE)
+```
+
+
+### Bayesian R-squared
+
+```{r fit3-bayes-r2}
+r2.fit3 <- bayes_R2(fit3)
+```
+
+
+
+
