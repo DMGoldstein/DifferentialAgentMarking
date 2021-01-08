@@ -1,5 +1,3 @@
-# Data and code for the paper 
-
 # Overview
 
 This repository contains the data, code, and supplementary files for the paper "A multifactorial analysis of differential agent marking in Herodotus" (_Journal of Greek Linguistics_ 2021). 
