@@ -30,17 +30,17 @@ data <- read_csv(data.path)
 
 ```{r create-factors}
 #Create factors
-data$BOOK <- factor(data$BOOK)
-data$CHAPTER <- factor(data$CHAPTER)
-data$SECTION <- factor(data$SECTION)
-data$AGENT.EXPONENCE <- factor(data$AGENT.EXPONENCE, levels = c("PP", "DAT")) 
-data$AGENT.PP <- factor(data$AGENT.PP)
-hdt.passive$PERFECT <- factor(hdt.passive$PERFECT, levels=c("NON.PERFECT", "PERFECT"))
-data$AGENT.NOMINALITY <- factor(data$AGENT.NOMINALITY, levels = c("NOUN", "PRONOUN"))
-data$SUBJECT.ANIMACY <- factor(data$SUBJECT.ANIMACY, levels=c("ANIMATE", "INANIMATE")) 
-data$PARTICIPLE <- factor(data$PARTICIPLE, levels=c("NON.PARTICIPLE", "PARTICIPLE"))
-data$AGENT.STATUS <- factor(data$AGENT.STATUS, levels = c("NON.PRONOMINAL", "STRESSED.PRO", "ENCLITIC.PRO"))
-data$LEMMA <- factor(data$LEMMA)
+data$book <- factor(data$book)
+data$chapter <- factor(data$chapter)
+data$section <- factor(data$section)
+data$agent.phrase <- factor(data$agent.phrase, levels = c("PP", "DAT")) 
+data$agent.pp <- factor(data$agent.pp)
+hdt.passive$perfect <- factor(hdt.passive$perfect, levels=c("NON.PERFECT", "PERFECT"))
+data$agent.nominality <- factor(data$agent.nominality, levels = c("NOUN", "PRONOUN"))
+data$subject.animacy <- factor(data$subject.animacy, levels=c("ANIMATE", "INANIMATE")) 
+data$participle <- factor(data$participle, levels=c("NON.PARTICIPLE", "PARTICIPLE"))
+data$agent.realization <- factor(data$agent.realization, levels = c("NON.PRONOMINAL", "STRESSED.PRO", "ENCLITIC.PRO"))
+data$lemma <- factor(data$lemma)
 ```
 
 ## Create training and test data
@@ -58,9 +58,9 @@ data.test  <- data[-sample, ]
 
 
 ```{r fit1-model}
-fit1 <- brm(formula = AGENT.EXPONENCE ~ PERFECT + (1|LEMMA),
+fit1 <- brm(formula = agent.phrase ~ perfect + (1|lemma),
             data = data, family = bernoulli(),
-            prior = get_prior(AGENT.EXPONENCE ~ PERFECT + (1|LEMMA), data = data, family = binomial()),
+            prior = get_prior(agent.phrase ~ perfect + (1|lemma), data = data, family = binomial()),
             warmup = 4000, iter = 20000, chains = 6,
             control = list(adapt_delta = 0.95), save_all_pars = TRUE)
 ```
@@ -87,15 +87,15 @@ cond.marg.r2.fit1 <- as.data.frame(r2_bayes(fit1, ci = 0.95))
 ### Correct classification rate
 
 ```{r fit1-correct-classification-rate}
-fit1.train <- brm(formula = AGENT.EXPONENCE ~ PERFECT + (1|LEMMA),
+fit1.train <- brm(formula = agent.phrase ~ perfect + (1|lemma),
             data = data.train, family = bernoulli(),
-            prior = get_prior(AGENT.EXPONENCE ~ PERFECT + (1|LEMMA), data = data.train, family = bernoulli()),
+            prior = get_prior(agent.phrase ~ perfect + (1|lemma), data = data.train, family = bernoulli()),
             warmup = 4000, iter = 20000, chains = 6, cores = 6,
             control = list(adapt_delta = 0.95), save_all_pars = TRUE, seed = 100)
 
 fit1.predict <- predict(fit1.train, newdata=data.test, allow_new_levels=TRUE) 
 fit1.predict <- if_else(fit1.predict[,1] > 0.5, 1, 0)
-fit1.confusion.matrix <- table(fit1.predict, pull(data.test, AGENT.EXPONENCE))
+fit1.confusion.matrix <- table(fit1.predict, pull(data.test, agent.phrase))
 fit1.ccr <- sum(diag(fit1.confusion.matrix))/sum(fit1.confusion.matrix)
 fit1.predict.df <- as.data.frame(fit1.predict)
 ```
@@ -105,7 +105,7 @@ fit1.predict.df <- as.data.frame(fit1.predict)
 # George 2005
 
 ```{r fit2-model}
-fit2 <- brm(formula = AGENT.EXPONENCE ~ PERFECT + AGENT.NOMINALITY +  SUBJECT.ANIMACY + PARTICIPLE + (1|LEMMA), data = data, family = bernoulli(), prior = get_prior(AGENT.EXPONENCE ~ PERFECT + AGENT.NOMINALITY +  SUBJECT.ANIMACY + PARTICIPLE + (1|LEMMA), data = data, family = binomial()), warmup = 4000, iter = 20000, chains = 6, control = list(adapt_delta = 0.95), save_all_pars = TRUE)
+fit2 <- brm(formula = agent.phrase ~ perfect + agent.nominality +  subject.animacy + participle + (1|lemma), data = data, family = bernoulli(), prior = get_prior(agent.phrase ~ perfect + agent.nominality +  subject.animacy + participle + (1|lemma), data = data, family = binomial()), warmup = 4000, iter = 20000, chains = 6, control = list(adapt_delta = 0.95), save_all_pars = TRUE)
 ```
 
 ## Convergence
@@ -121,12 +121,12 @@ fit2 %>% plot(combo = c("hist", "trace"), widths = c(1, 1.5), theme = theme_bw(b
 ### Correct classification rate
 
 ```{r fit2-correct-classification-rate}
-fit2.train <- brm(formula = AGENT.EXPONENCE ~ PERFECT + AGENT.NOMINALITY +  SUBJECT.ANIMACY + PARTICIPLE + (1|LEMMA), data = data.train, family = bernoulli(), 
-            prior = get_prior(AGENT.EXPONENCE ~ PERFECT + AGENT.NOMINALITY +  SUBJECT.ANIMACY + PARTICIPLE + (1|LEMMA), data = data.train, family = bernoulli()), warmup = 4000, iter = 20000, chains = 6, cores = 6, control = list(adapt_delta = 0.95), save_all_pars = TRUE, seed = 100)
+fit2.train <- brm(formula = agent.phrase ~ perfect + agent.nominality +  subject.animacy + participle + (1|lemma), data = data.train, family = bernoulli(), 
+            prior = get_prior(agent.phrase ~ perfect + agent.nominality +  subject.animacy + participle + (1|lemma), data = data.train, family = bernoulli()), warmup = 4000, iter = 20000, chains = 6, cores = 6, control = list(adapt_delta = 0.95), save_all_pars = TRUE, seed = 100)
 
 fit2.predict <- predict(fit2.train, newdata=data.test, allow_new_levels=TRUE)
 fit2.predict <- if_else(fit2.predict[,1] > 0.5, 1, 0)
-fit2.confusion.matrix <- table(fit2.predict, pull(data.test, AGENT.EXPONENCE))
+fit2.confusion.matrix <- table(fit2.predict, pull(data.test, agent.phrase))
 fit2.ccr <- sum(diag(fit2.confusion.matrix))/sum(fit2.confusion.matrix)
 ```
 
@@ -146,9 +146,9 @@ fit2.fit1.bf <- bayes_factor(fit2, fit1, log = TRUE)
 # Proposed model
 
 ```{r fit3-model}
-fit3 <- brm(formula = AGENT.EXPONENCE ~ PERFECT  + AGENT.STATUS + SUBJECT.ANIMACY + (1|LEMMA),
+fit3 <- brm(formula = agent.phrase ~ perfect  + agent.realization + subject.animacy + (1|lemma),
             data = data, family = bernoulli(),
-            prior = get_prior(AGENT.EXPONENCE ~ PERFECT  + AGENT.STATUS + SUBJECT.ANIMACY  + (1|LEMMA), data = data, family = binomial()),
+            prior = get_prior(agent.phrase ~ perfect  + agent.realization + subject.animacy  + (1|lemma), data = data, family = binomial()),
             warmup = 4000, iter = 20000, chains = 6,
             control = list(adapt_delta = 0.95), save_all_pars = TRUE)
 ```
@@ -156,9 +156,9 @@ fit3 <- brm(formula = AGENT.EXPONENCE ~ PERFECT  + AGENT.STATUS + SUBJECT.ANIMAC
 ### Random-intercepts and random-slopes
 
 ```{r full-random-effects, eval=FALSE}
-fit3.full.random <- brm(formula = AGENT.EXPONENCE ~ PERFECT + AGENT.STATUS + SUBJECT.ANIMACY  + (1 + PERFECT + AGENT.STATUS + SUBJECT.ANIMACY|LEMMA),
+fit3.full.random <- brm(formula = agent.phrase ~ perfect + agent.realization + subject.animacy  + (1 + perfect + agent.realization + subject.animacy|lemma),
             data = hdt.passive, family = bernoulli(),
-            prior = get_prior(AGENT.EXPONENCE ~ PERFECT +  AGENT.STATUS + SUBJECT.ANIMACY  + (1|LEMMA), data = hdt.passive, family = bernoulli()),
+            prior = get_prior(agent.phrase ~ perfect +  agent.realization + subject.animacy  + (1|lemma), data = hdt.passive, family = bernoulli()),
             warmup = 4000, iter = 20000, chains = 6, cores = 6,
             control = list(adapt_delta = 0.95, max_treedepth = 15), save_all_pars = TRUE)
 ```
@@ -179,15 +179,15 @@ fit3 %>% plot(combo = c("hist", "trace"), widths = c(1, 1.5), theme = theme_bw(b
 ### Correct classification rate
 
 ```{r fit3-correct-classification-rate}
-fit3.train <- brm(formula = AGENT.EXPONENCE ~ PERFECT +  AGENT.STATUS + SUBJECT.ANIMACY  + (1|LEMMA),
+fit3.train <- brm(formula = agent.phrase ~ perfect +  agent.realization + subject.animacy  + (1|lemma),
             data = data.train, family = bernoulli(),
-            prior = get_prior(AGENT.EXPONENCE ~ PERFECT +  AGENT.STATUS + SUBJECT.ANIMACY  + (1|LEMMA), data = data.train, family = bernoulli()),
+            prior = get_prior(agent.phrase ~ perfect +  agent.realization + subject.animacy  + (1|lemma), data = data.train, family = bernoulli()),
             warmup = 4000, iter = 20000, chains = 6, cores = 6,
             control = list(adapt_delta = 0.95), save_all_pars = TRUE, seed = 100)
 
 fit3.predict <- predict(fit3.train, newdata=data.test, allow_new_levels=TRUE)
 fit3.predict <- if_else(fit3.predict[,1] > 0.5, 1, 0)
-fit3.confusion.matrix <- table(fit3.predict, pull(data.test, AGENT.EXPONENCE)) #`pull` 
+fit3.confusion.matrix <- table(fit3.predict, pull(data.test, agent.phrase)) #`pull` 
 fit3.ccr <- sum(diag(fit3.confusion.matrix))/sum(fit3.confusion.matrix)
 ```
 
